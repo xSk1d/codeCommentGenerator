@@ -8,7 +8,7 @@
  * Project: C++ Comment Generator
  * Description: This program reads a C++ file and adds proper comments
  *              according to coding style guidelines. Fixed version with
- *              better validation and proper formatting.
+ *              smart brace tracking and proper I/O detection.
  */
 
 #include <iostream>
@@ -246,11 +246,11 @@ bool IsLikelyFunctionStart(string line)
         return false;
     }
     
-    // Exclude control structures
-    if (line.find("if ") != string::npos ||
-        line.find("while ") != string::npos ||
-        line.find("for ") != string::npos ||
-        line.find("switch ") != string::npos)
+    // Exclude control structures (with space after keyword)
+    if (line.find("if (") != string::npos ||
+        line.find("while (") != string::npos ||
+        line.find("for (") != string::npos ||
+        line.find("switch (") != string::npos)
     {
         return false;
     }
@@ -268,49 +268,49 @@ bool IsLikelyFunctionStart(string line)
 
 
 /*
- * IsLikelyFunctionEnd
- * This function determines if a closing brace is likely end of function.
- * Uses better logic to avoid asking about every closing brace.
- * Input: line [IN] - the code line with closing brace
- *        previousLine [IN] - the line before this one for context
- * Return: bool - returns true if this appears to be function end,
+ * IsIOStatement
+ * This function checks if a line contains input/output operations.
+ * Looks for cout, cin, printf, scanf, etc.
+ * Input: line [IN] - the code line to examine
+ * Return: bool - returns true if line contains I/O operations,
  *                false otherwise. No side effects.
  */
-bool IsLikelyFunctionEnd(string line, string previousLine)
+bool IsIOStatement(string line)
 {
-    // Must contain closing brace but not opening brace
-    if (line.find('}') == string::npos || line.find('{') != string::npos)
-    {
-        return false;
-    }
-    
-    // Skip if previous line looks like control structure
-    if (previousLine.find("if") != string::npos ||
-        previousLine.find("else") != string::npos ||
-        previousLine.find("for") != string::npos ||
-        previousLine.find("while") != string::npos ||
-        previousLine.find("{") != string::npos)
-    {
-        return false;
-    }
-    
-    // Skip if this line has other code besides the brace
-    string trimmed = line;
-    while (!trimmed.empty() && (trimmed[0] == ' ' || trimmed[0] == '\t'))
-    {
-        trimmed = trimmed.substr(1);
-    }
-    
-    // Only ask if it's mostly just a closing brace
-    return (trimmed.length() <= 3 && trimmed[0] == '}');
-} // IsLikelyFunctionEnd
+    return (line.find("cout") != string::npos ||
+            line.find("cin") != string::npos ||
+            line.find("printf") != string::npos ||
+            line.find("scanf") != string::npos ||
+            line.find("getline") != string::npos);
+} // IsIOStatement
+
+
+
+/*
+ * IsControlStatement
+ * This function checks if a line contains control flow statements.
+ * Looks for if, while, for, switch, etc.
+ * Input: line [IN] - the code line to examine
+ * Return: bool - returns true if line contains control statements,
+ *                false otherwise. No side effects.
+ */
+bool IsControlStatement(string line)
+{
+    return (line.find("if (") != string::npos ||
+            line.find("else if (") != string::npos ||
+            line.find("else") != string::npos ||
+            line.find("while (") != string::npos ||
+            line.find("for (") != string::npos ||
+            line.find("switch (") != string::npos ||
+            line.find("do") != string::npos);
+} // IsControlStatement
 
 
 
 /*
  * main
- * This function is the main program entry point that orchestrates the
- * comment generation process with improved validation and formatting.
+ * This function is the main program entry point with smart brace tracking.
+ * Tracks function depth to only ask about function-level closing braces.
  * Input: None
  * Return: int - returns 0 for successful completion, 1 for file errors.
  *               Side effects: creates output file, displays user interface.
@@ -368,9 +368,12 @@ int main()
     // Create file header
     CreateFileHeader(outputFile, inputFilePath, currentDate, projectName, programDescription);
     
-    // Process file line by line
+    // Process file line by line with smart brace tracking
     string currentLine;
-    string previousLine = "";
+    int braceDepth = 0;
+    bool inFunction = false;
+    string lastFunctionName = "";
+    
     cout << endl << "Processing your code..." << endl << endl;
     
     while (getline(inputFile, currentLine))
@@ -379,11 +382,19 @@ int main()
         if (currentLine.find("//") == 0 || currentLine.find("/*") == 0)
         {
             outputFile << currentLine << endl;
-            previousLine = currentLine;
             continue;
         }
         
-        // Detect function definitions with better logic
+        // Count braces to track depth
+        int openBraces = 0;
+        int closeBraces = 0;
+        for (char c : currentLine)
+        {
+            if (c == '{') openBraces++;
+            if (c == '}') closeBraces++;
+        }
+        
+        // Detect function definitions
         if (IsLikelyFunctionStart(currentLine))
         {
             cout << "Found function: " << currentLine << endl;
@@ -401,6 +412,7 @@ int main()
                 
                 cout << "Enter function name: ";
                 getline(cin, funcName);
+                lastFunctionName = funcName; // Remember for closing brace
                 
                 cout << "What does this function do? ";
                 getline(cin, funcDesc);
@@ -429,6 +441,52 @@ int main()
                 getline(cin, funcReturn);
                 
                 CreateFunctionHeader(outputFile, funcName, funcDesc, funcParams, funcReturn);
+            }
+            
+            if (openBraces > 0)
+            {
+                inFunction = true;
+                braceDepth = 1;
+            }
+            cout << endl;
+        }
+        
+        // Detect I/O statements
+        else if (IsIOStatement(currentLine))
+        {
+            cout << "Found I/O statement: " << currentLine << endl;
+            
+            string answer;
+            cout << "Add comment for this I/O? (y/n): ";
+            getline(cin, answer);
+            
+            if (answer == "y" || answer == "Y")
+            {
+                string comment;
+                cout << "What does this I/O do? ";
+                getline(cin, comment);
+                
+                outputFile << "    // " << comment << endl;
+            }
+            cout << endl;
+        }
+        
+        // Detect control statements
+        else if (IsControlStatement(currentLine))
+        {
+            cout << "Found control statement: " << currentLine << endl;
+            
+            string answer;
+            cout << "Add comment for this control statement? (y/n): ";
+            getline(cin, answer);
+            
+            if (answer == "y" || answer == "Y")
+            {
+                string comment;
+                cout << "What does this control statement do? ";
+                getline(cin, comment);
+                
+                outputFile << "    // " << comment << endl;
             }
             cout << endl;
         }
@@ -463,23 +521,30 @@ int main()
         // Write the original line
         outputFile << currentLine << endl;
         
-        // Handle function end comments ONLY for likely function ends
-        if (IsLikelyFunctionEnd(currentLine, previousLine))
-        {
-            string functionName;
-            cout << "Found end of function: " << currentLine << endl;
-            cout << "Enter function name for this closing brace (or Enter to skip): ";
-            getline(cin, functionName);
-            
-            if (!functionName.empty())
-            {
-                outputFile.seekp(-2, ios::cur);
-                outputFile << "  // end of \"" << functionName << "\"" << endl;
-                outputFile << endl << endl;
-            }
-        }
+        // Update brace depth
+        braceDepth += openBraces - closeBraces;
         
-        previousLine = currentLine;
+        // Check if we're at the end of a function (depth returns to 0)
+        if (inFunction && braceDepth == 0 && closeBraces > 0)
+        {
+            if (!lastFunctionName.empty())
+            {
+                cout << "End of function '" << lastFunctionName << "' detected." << endl;
+                string answer;
+                cout << "Add function end comment? (y/n): ";
+                getline(cin, answer);
+                
+                if (answer == "y" || answer == "Y")
+                {
+                    outputFile.seekp(-2, ios::cur);
+                    outputFile << "  // end of \"" << lastFunctionName << "\"" << endl;
+                    outputFile << endl << endl;
+                }
+            }
+            inFunction = false;
+            lastFunctionName = "";
+            cout << endl;
+        }
     }
     
     // Close files
