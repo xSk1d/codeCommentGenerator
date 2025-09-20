@@ -403,16 +403,15 @@ int main()
             cout << "Add function comment? (y/n): ";
             getline(cin, answer);
             
+            string funcName = "";
             if (answer == "y" || answer == "Y")
             {
-                string funcName;
                 string funcDesc;
                 string funcParams = "";
                 string funcReturn;
                 
                 cout << "Enter function name: ";
                 getline(cin, funcName);
-                lastFunctionName = funcName; // Remember for closing brace
                 
                 cout << "What does this function do? ";
                 getline(cin, funcDesc);
@@ -442,12 +441,23 @@ int main()
                 
                 CreateFunctionHeader(outputFile, funcName, funcDesc, funcParams, funcReturn);
             }
-            
-            if (openBraces > 0)
+            else
             {
-                inFunction = true;
-                braceDepth = 1;
+                // Still need to get function name for end detection
+                cout << "Enter function name for end detection (or Enter to skip): ";
+                getline(cin, funcName);
             }
+            
+            // Remember function name for closing brace detection
+            if (!funcName.empty())
+            {
+                lastFunctionName = funcName;
+            }
+            
+            // Mark that we're entering a function
+            inFunction = true;
+            braceDepth = 0; // Will be incremented when we see the opening brace
+            
             cout << endl;
         }
         
@@ -518,14 +528,14 @@ int main()
             cout << endl;
         }
         
+        // Update brace depth first
+        braceDepth += openBraces - closeBraces;
+        
         // Write the original line
         outputFile << currentLine << endl;
         
-        // Update brace depth
-        braceDepth += openBraces - closeBraces;
-        
-        // Check if we're at the end of a function (depth returns to 0)
-        if (inFunction && braceDepth == 0 && closeBraces > 0)
+        // Check if we're at the end of a function
+        if (inFunction && closeBraces > 0 && braceDepth == 0)
         {
             if (!lastFunctionName.empty())
             {
@@ -540,10 +550,17 @@ int main()
                     outputFile << "  // end of \"" << lastFunctionName << "\"" << endl;
                     outputFile << endl << endl;
                 }
+                cout << endl;
             }
             inFunction = false;
             lastFunctionName = "";
-            cout << endl;
+        }
+        
+        // If we just entered a function and saw an opening brace, set depth properly
+        if (inFunction && openBraces > 0 && braceDepth == openBraces)
+        {
+            // This handles the case where { is on the same line as function declaration
+            // braceDepth is already set correctly by the += operation above
         }
     }
     
