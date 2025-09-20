@@ -270,12 +270,13 @@ bool IsLikelyFunctionStart(string line)
 /*
  * IsLikelyFunctionEnd
  * This function determines if a closing brace is likely end of function.
- * Checks for simple patterns to reduce false positives.
+ * Uses better logic to avoid asking about every closing brace.
  * Input: line [IN] - the code line with closing brace
+ *        previousLine [IN] - the line before this one for context
  * Return: bool - returns true if this appears to be function end,
  *                false otherwise. No side effects.
  */
-bool IsLikelyFunctionEnd(string line)
+bool IsLikelyFunctionEnd(string line, string previousLine)
 {
     // Must contain closing brace but not opening brace
     if (line.find('}') == string::npos || line.find('{') != string::npos)
@@ -283,15 +284,25 @@ bool IsLikelyFunctionEnd(string line)
         return false;
     }
     
-    // Simple heuristic: if line is mostly just whitespace and }
+    // Skip if previous line looks like control structure
+    if (previousLine.find("if") != string::npos ||
+        previousLine.find("else") != string::npos ||
+        previousLine.find("for") != string::npos ||
+        previousLine.find("while") != string::npos ||
+        previousLine.find("{") != string::npos)
+    {
+        return false;
+    }
+    
+    // Skip if this line has other code besides the brace
     string trimmed = line;
-    while (!trimmed.empty() && trimmed[0] == ' ')
+    while (!trimmed.empty() && (trimmed[0] == ' ' || trimmed[0] == '\t'))
     {
         trimmed = trimmed.substr(1);
     }
     
-    // If it starts with } and doesn't have much else, likely function end
-    return (trimmed[0] == '}' && trimmed.length() < 10);
+    // Only ask if it's mostly just a closing brace
+    return (trimmed.length() <= 3 && trimmed[0] == '}');
 } // IsLikelyFunctionEnd
 
 
@@ -359,6 +370,7 @@ int main()
     
     // Process file line by line
     string currentLine;
+    string previousLine = "";
     cout << endl << "Processing your code..." << endl << endl;
     
     while (getline(inputFile, currentLine))
@@ -367,6 +379,7 @@ int main()
         if (currentLine.find("//") == 0 || currentLine.find("/*") == 0)
         {
             outputFile << currentLine << endl;
+            previousLine = currentLine;
             continue;
         }
         
@@ -450,11 +463,12 @@ int main()
         // Write the original line
         outputFile << currentLine << endl;
         
-        // Handle function end comments with better detection
-        if (IsLikelyFunctionEnd(currentLine))
+        // Handle function end comments ONLY for likely function ends
+        if (IsLikelyFunctionEnd(currentLine, previousLine))
         {
             string functionName;
-            cout << "Is this the end of a function? Enter name (or Enter to skip): ";
+            cout << "Found end of function: " << currentLine << endl;
+            cout << "Enter function name for this closing brace (or Enter to skip): ";
             getline(cin, functionName);
             
             if (!functionName.empty())
@@ -464,6 +478,8 @@ int main()
                 outputFile << endl << endl;
             }
         }
+        
+        previousLine = currentLine;
     }
     
     // Close files
