@@ -531,29 +531,40 @@ int main()
         // Update brace depth first
         braceDepth += openBraces - closeBraces;
         
-        // Write the original line
-        outputFile << currentLine << endl;
-        
-        // Check if we're at the end of a function
+        // Write the original line (but check if we need to add function end comment)
         if (inFunction && closeBraces > 0 && braceDepth == 0)
         {
+            // This is the end of a function - check if user wants end comment
             if (!lastFunctionName.empty())
             {
-                cout << "End of function '" << lastFunctionName << "' detected." << endl;
+                cout << "End of function '" << lastFunctionName << "' detected: " << currentLine << endl;
                 string answer;
                 cout << "Add function end comment? (y/n): ";
                 getline(cin, answer);
                 
                 if (answer == "y" || answer == "Y")
                 {
-                    outputFile.seekp(-2, ios::cur);
-                    outputFile << "  // end of \"" << lastFunctionName << "\"" << endl;
+                    // Add comment to the same line as the closing brace
+                    outputFile << currentLine << "  // end of \"" << lastFunctionName << "\"" << endl;
                     outputFile << endl << endl;
+                }
+                else
+                {
+                    outputFile << currentLine << endl;
                 }
                 cout << endl;
             }
+            else
+            {
+                outputFile << currentLine << endl;
+            }
             inFunction = false;
             lastFunctionName = "";
+        }
+        else
+        {
+            // Normal line - just write it
+            outputFile << currentLine << endl;
         }
         
         // If we just entered a function and saw an opening brace, set depth properly
